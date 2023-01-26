@@ -146,7 +146,7 @@ db.removeAdmin = async _id => {
 
 db.isAdmin = async _id => {
 	let admin = await db.get(`admin`).catch(err => JSON.stringify([]));
-	return admin.includes(_id);
+	return admin.indexOf(_id) !== -1;
 }
 
 db.getLocationTable = async () => {
@@ -542,6 +542,18 @@ CommandHandler.addCommand(new Command(
 		process.exit();
 	},
 	true
+));
+
+CommandHandler.addCommand(new Command(
+	'isadmin',
+	['isadmin'],
+	async (msg, say) => {
+		let check = msg.p._id;
+		if (msg.args[1]) check = msg.argcat;
+		let out = await db.isAdmin(check).catch(err => false) == true;
+		console.log(out);
+		return out ? 'Yes admin' : 'No admin';
+	}
 ));
 
 })();
