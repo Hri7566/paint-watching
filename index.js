@@ -22,6 +22,19 @@ const defaultObjectTable = [
 			displayName: 'Couch',
 			enableSit: true
 		}
+	},
+	{
+		id: 'bench',
+		static: {
+			displayName: 'Bench',
+			enableSit: true
+		}
+	},
+	{
+		id: 'hill',
+		static: {
+			displayName: 'Hill'
+		}
 	}
 ];
 
@@ -31,10 +44,9 @@ db.getObjectTable = async () => {
 	});
 
 	// set new objects
-	//? should static properties be skipped?
 	for (let obj of defaultObjectTable) {
-		if (!objs[obj.id]) {
-			objs[obj.id] = obj;
+		if (!objs.find(o => o.id == obj.id)) {
+			objs.push(obj);
 		}
 	}
 
@@ -42,6 +54,7 @@ db.getObjectTable = async () => {
 
 	return objs;
 }
+
 
 class ObjectHandler {
 	static async get(id) {
@@ -61,9 +74,10 @@ class ObjectHandler {
 		this.set(obj);
 	}
 
-	static async getStaticProperty(id, property) {
+	static async getStaticProperty(id, prop) {
 		let obj = await this.get(id);
 		if (!obj) return;
+		if (!obj.hasOwnProperty(prop)) return;
 		return obj.static[prop];
 	}
 
@@ -105,6 +119,9 @@ const defaultLocationTable = [
 		displayName: 'Outside',
 		aliases: [ 'out' ],
 		world: 'Earth',
+		objects: [
+			await ObjectHandler.new('bench')
+		],
 		reach: [ 'home' ]
 	}
 ];
@@ -145,6 +162,7 @@ db.removeAdmin = async _id => {
 }
 
 db.isAdmin = async _id => {
+	// FIXME
 	let admin = await db.get(`admin`).catch(err => JSON.stringify([]));
 	return admin.indexOf(_id) !== -1;
 }
@@ -285,7 +303,9 @@ class CommandHandler {
 
 		msg.args = msg.a.split(' ');
 		msg.argcat = msg.a.substring(msg.args[0].length).trim();
-		msg.admin = msg.admin || db.isAdmin(msg.p._id);
+		if (!msg.hasOwnProperty('admin')) {
+			msg.admin = await db.isAdmin(msg.p._id) == true;
+		}
 
 		prefixLoop:
 		for (let prefix of this.prefixes) {
@@ -512,9 +532,10 @@ CommandHandler.addCommand(new Command(
 	async (msg, say) => {
 		let loc = await db.getLocation(msg.p._id);
 		if (!loc.objects) return `There's nothing to look at here.`;
-		return `There's ` + await Promise.all(loc.objects.map(async o => {
+		let list = (await Promise.all(loc.objects.map(async o => {
 			return (await ObjectHandler.getName(o.id));
-		})) + `... about.`;
+		}))).join();
+		return `There's ` + list + `... about.`;
 	},
 	true
 ));
@@ -522,6 +543,21 @@ CommandHandler.addCommand(new Command(
 CommandHandler.addCommand(new Command(
 	'resetlocation',
 	['resetlocation', 'resetloc', 'rsloc'],
+	async (msg, say) => {
+		let qid = msg.argcat;
+		if (!qid) return 'Missed entirely, you need a parameter';
+		let loctab = await db.getLocationTable();
+		let loc = loctab.find(l => l.id == qid);
+		if (!loc) return `Missed location ${qid} (not in location table) :(`;
+		loctab[loctab.indexOf(loc)] = defaultLocationTable.find(l => l.id == qid);
+		return `Reset location with id ${loc.id}`
+	},
+	true
+));
+
+CommandHandler.addCommand(new Command(
+	'resetalllocations',
+	['resetalllocations', 'resetallloc', 'rsallloc', 'rsall', 'resetlocall', 'resetlocationsall'],
 	async (msg, say) => {
 		let qid = msg.argcat;
 		if (!qid) return 'Missed entirely, you need a parameter';
@@ -551,8 +587,34 @@ CommandHandler.addCommand(new Command(
 		let check = msg.p._id;
 		if (msg.args[1]) check = msg.argcat;
 		let out = await db.isAdmin(check).catch(err => false) == true;
-		console.log(out);
 		return out ? 'Yes admin' : 'No admin';
+	}
+));
+
+CommandHandler.addCommand(new Command(
+	'sit',
+	['sit'],
+	async (msg, say) => {
+		let sitobj;
+		let loc = await db.getLocation(msg.p._id);
+		
+		for (let obj of loc.objects) {
+			if ((await ObjectHandler.getStaticProperty(obj.id, 'enableSit')) == true) {
+				sitobj = obj;
+			}
+		}
+
+		if (!sitobj) return `There is nothing to sit on here.`;
+		
+		let key = `sitting~${msg.p._id}`
+		let sitting = await db.get(key).catch(err => false);
+		if (sitting) {
+			db.del(key);
+		} else {
+			db.put(key, true);
+		}
+
+		return `Friend ${msg.p.name} is now sitting on the ${ObjectHandler.getName(sitobj.id)}.`;
 	}
 ));
 
