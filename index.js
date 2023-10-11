@@ -122,7 +122,10 @@
             displayName: "Outside",
             aliases: ["out"],
             world: "Earth",
-            objects: [await ObjectHandler.new("bench")],
+            objects: [
+                await ObjectHandler.new("bench"),
+                await ObjectHandler.new("hill")
+            ],
             reach: ["home"]
         }
     ];
@@ -150,27 +153,33 @@
     };
 
     db.addAdmin = async _id => {
-        let admin = await db.get("admin").catch(err => {
-            return new Array();
-        });
-        if (!admin) admin = [];
+        let admin = await db.getAdmin();
         admin.push(_id);
-        await db.put(`admin`, admin);
+        await db.put(`admin`, JSON.stringify(admin));
     };
 
     db.removeAdmin = async _id => {
-        let admin = await db.get("admin").catch(err => {
-            return new Array();
-        });
-        if (!admin) return;
+        let admin = await db.getAdmin();
         admin.splice(admin.indexOf(_id), 1);
-        await db.put(`admin`, admin);
+        await db.put(`admin`, JSON.stringify(admin));
     };
 
     db.isAdmin = async _id => {
         // FIXME
-        let admin = await db.get(`admin`).catch(err => JSON.stringify([]));
+        let admin = await db.getAdmin();
         return admin.indexOf(_id) !== -1;
+    };
+
+    db.getAdmin = async () => {
+        let admin = JSON.parse(
+            await db.get(`admin`).catch(async err => {
+                let defaultAdmin = ["ead940199c7d9717e5149919"];
+                await db.put(`admin`, JSON.stringify(defaultAdmin));
+                return JSON.stringify(defaultAdmin);
+            })
+        );
+
+        return admin;
     };
 
     db.getLocationTable = async () => {
@@ -486,7 +495,7 @@
                 }
             }
 
-            if (cur == loc.id) {
+            if (cur.id == loc.id) {
                 return `My dude ${msg.p.name}, you're already there, man!`;
             }
 
@@ -600,6 +609,19 @@
                     )
                 ).join();
                 return `There's ` + list + `... about.`;
+            },
+            true
+        )
+    );
+
+    CommandHandler.addCommand(
+        new Command(
+            "world",
+            ["world"],
+            async (msg, say) => {
+                let loc = await db.getLocation(msg.p._id);
+                if (!loc.world) return `This place is not in any world.`;
+                return `The world you are in is ${loc.world}.`;
             },
             true
         )
